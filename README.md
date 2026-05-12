@@ -1,17 +1,16 @@
 # JobPilot AI
 
-JobPilot AI is a FastAPI-based AI Agent Engineering project for building job search automation workflows. The codebase is structured for real product development: API routes, service integrations, agent orchestration, database access, prompts, and tests are separated so the project can grow without turning into a single-file demo.
+JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workflows. It includes JD analysis, resume optimization, OpenAI-compatible model integration, and SQLite persistence for resume analysis records.
 
 ## Tech Stack
 
 - Python 3.11+
 - FastAPI with async request handlers
 - Pydantic Settings for environment configuration
-- SQLAlchemy async engine for PostgreSQL
-- OpenAI API for model calls
-- LangGraph for agent workflows
-- Playwright for browser automation
-- Pytest and HTTPX for async API tests
+- OpenAI-compatible SDK integration
+- SQLAlchemy with SQLite persistence
+- Pytest and HTTPX for API tests
+- LangGraph and Playwright are reserved for later agent workflow and browser automation features
 
 ## Project Structure
 
@@ -20,18 +19,21 @@ JobPilot AI is a FastAPI-based AI Agent Engineering project for building job sea
 ├── api/
 │   ├── app.py
 │   └── routes/
-│       └── health.py
+│       ├── health.py
+│       ├── job.py
+│       └── resume.py
 ├── agents/
-│   └── job_search_agent.py
+│   ├── job_search_agent.py
+│   └── resume_optimizer_agent.py
 ├── database/
+│   ├── init_db.py
+│   ├── models.py
 │   └── session.py
 ├── prompts/
-│   └── system.md
 ├── services/
-│   └── config.py
+│   ├── config.py
+│   └── openai_client.py
 ├── tests/
-│   └── test_health.py
-├── .env.example
 ├── main.py
 ├── README.md
 └── requirements.txt
@@ -42,15 +44,13 @@ JobPilot AI is a FastAPI-based AI Agent Engineering project for building job sea
 Create and activate a virtual environment:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
 ```
 
 On Windows PowerShell:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1
 ```
 
 Install dependencies:
@@ -59,19 +59,17 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Create a local environment file:
-
-```bash
-cp .env.example .env
-```
-
 Run the API:
 
 ```bash
 uvicorn main:app --reload
 ```
 
-Open the health check endpoint:
+The app creates `jobpilot.db` automatically on startup.
+
+## APIs
+
+Health check:
 
 ```text
 GET http://127.0.0.1:8000/api/v1/health
@@ -79,22 +77,56 @@ GET http://127.0.0.1:8000/api/v1/health
 
 Analyze a job description:
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/job/analyze \
-  -H "Content-Type: application/json" \
-  -d "{\"jd_text\":\"招聘 Python AI Engineer，负责 FastAPI、OpenAI Agent 和自动化工作流开发。\"}"
+```text
+POST http://127.0.0.1:8000/api/v1/job/analyze
 ```
 
-Run tests:
+Optimize a resume for a target JD:
+
+```text
+POST http://127.0.0.1:8000/api/v1/resume/optimize
+```
+
+Request body:
+
+```json
+{
+  "resume_text": "Candidate resume text...",
+  "jd_text": "Target job description text..."
+}
+```
+
+Structured response:
+
+```json
+{
+  "match_score": 86,
+  "strengths": ["..."],
+  "missing_skills": ["..."],
+  "resume_suggestions": ["..."],
+  "project_rewrite_suggestions": ["..."],
+  "summary": "..."
+}
+```
+
+Get recent resume analysis history:
+
+```text
+GET http://127.0.0.1:8000/api/v1/resume/history
+```
+
+This returns the latest 20 saved resume analysis records from SQLite.
+
+## Testing
+
+Run all tests:
 
 ```bash
 pytest
 ```
 
-## Next Steps
+Run resume persistence tests:
 
-- Add OpenAI-powered services under `services/`.
-- Model agent workflows with LangGraph under `agents/`.
-- Add async PostgreSQL models and migrations under `database/`.
-- Add browser automation skills with Playwright for job board workflows.
-- Expand prompts under `prompts/` as versioned agent instructions.
+```bash
+pytest tests/test_resume_optimize.py
+```

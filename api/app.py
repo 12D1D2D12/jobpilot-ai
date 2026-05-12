@@ -4,12 +4,14 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from api.routes import health, job, resume
+from database.init_db import init_db
 from services.config import get_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    init_db()
     app.state.settings = settings
     yield
 
