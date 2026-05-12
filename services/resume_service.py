@@ -1,15 +1,13 @@
-import json
 from datetime import datetime
-from typing import Any
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from agents.resume_optimizer_agent import ResumeOptimizerAgent
 from database.models import ResumeAnalysisRecord
 from services.openai_client import OpenAIClientError
+from workflow.resume_workflow import ResumeWorkflow, ResumeWorkflowError
 
 
 class ResumeOptimizeResult(BaseModel):
@@ -32,28 +30,20 @@ class ResumeService:
     def __init__(
         self,
         db: Session,
-        agent: ResumeOptimizerAgent | None = None,
+        workflow: ResumeWorkflow | None = None,
     ) -> None:
         self.db = db
-        self.agent = agent or ResumeOptimizerAgent()
+        self.workflow = workflow or ResumeWorkflow()
 
     async def optimize_resume(
         self,
         resume_text: str,
         jd_text: str,
     ) -> ResumeOptimizeResult:
-        try:
-            raw_result = await self.agent.optimize_resume(
-                resume_text=resume_text,
-                jd_text=jd_text,
-            )
-        except OpenAIClientError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=str(exc),
-            ) from exc
-
-        result = self._parse_optimizer_result(raw_result)
+        result = await self._run_resume_workflow(
+            resume_text=resume_text,
+            jd_text=jd_text,
+        )
         self._save_analysis_record(
             resume_text=resume_text,
             jd_text=jd_text,
@@ -87,13 +77,25 @@ class ResumeService:
             for record in records
         ]
 
-    def _parse_optimizer_result(self, raw_result: str) -> ResumeOptimizeResult:
+    async def _run_resume_workflow(
+        self,
+        resume_text: str,
+        jd_text: str,
+    ) -> ResumeOptimizeResult:
         try:
-            payload: Any = json.loads(raw_result)
-        except json.JSONDecodeError as exc:
+            payload = await self.workflow.run(
+                resume_text=resume_text,
+                jd_text=jd_text,
+            )
+        except OpenAIClientError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+        except ResumeWorkflowError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Resume optimizer returned invalid JSON.",
+                detail=str(exc),
             ) from exc
 
         try:
@@ -101,7 +103,7 @@ class ResumeService:
         except ValidationError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Resume optimizer JSON does not match the expected schema.",
+                detail="Resume workflow result does not match the expected schema.",
             ) from exc
 
     def _save_analysis_record(
