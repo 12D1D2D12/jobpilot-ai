@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 
-from api.routes import health, job
+from api.routes import health, job, resume
 from services.config import get_settings
 
 
@@ -26,5 +26,6 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, prefix=settings.API_PREFIX)
     app.include_router(job.router, prefix=settings.API_PREFIX)
+    app.include_router(resume.router, prefix=settings.API_PREFIX)
 
     return app
