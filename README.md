@@ -96,6 +96,22 @@ Open Swagger docs:
 http://127.0.0.1:8000/docs
 ```
 
+## Demo Script
+
+After starting the API locally, run:
+
+```bash
+python scripts/demo.py
+```
+
+The script demonstrates:
+
+- Health check
+- JD Analyzer
+- Resume Optimizer
+- Resume History
+- Playwright Job Scraper
+
 ## Example Request
 
 `POST /api/v1/resume/optimize`
