@@ -1,6 +1,6 @@
 # JobPilot AI - Multi-Agent Job Hunting Automation Platform
 
-JobPilot AI is a FastAPI AI backend for job hunting automation. It combines JD analysis, structured resume optimization, LangGraph workflow orchestration, SQLite history, memory context, internal tool calling, and observability logging.
+JobPilot AI is a FastAPI AI backend for job hunting automation. It combines JD analysis, structured resume optimization, LangGraph workflow orchestration, SQLite history, memory context, internal tool calling, Playwright browser automation, and observability logging.
 
 The project is designed as an AI Agent Engineering backend rather than a simple demo: API routes, service layer, workflow orchestration, agents, tools, memory, and database persistence are separated for maintainability.
 
@@ -14,19 +14,24 @@ The project is designed as an AI Agent Engineering backend rather than a simple 
 - [x] Conditional Routing
 - [x] Memory Context
 - [x] SkillGapTool Tool Calling
+- [x] Browser Agent with Playwright Tool Calling
 - [x] Observability Logging
 
 ## Architecture
 
 ```text
 API Route
-↓
+  |
+  v
 Service Layer
-↓
+  |
+  v
 LangGraph Workflow
-↓
+  |
+  v
 Agent / Tools
-↓
+  |
+  v
 Database
 ```
 
@@ -35,6 +40,7 @@ Database
 ```text
 GET  /api/v1/health
 POST /api/v1/job/analyze
+GET  /api/v1/jobs/search?keyword=python
 POST /api/v1/resume/optimize
 GET  /api/v1/resume/history
 ```
@@ -61,6 +67,13 @@ Install dependencies:
 
 ```bash
 pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+If `GET /api/v1/jobs/search` returns a Playwright browser error, run:
+
+```bash
+python -m playwright install chromium
 ```
 
 Configure environment variables:
@@ -107,6 +120,29 @@ Example response shape:
 }
 ```
 
+## Browser Agent
+
+The project includes a first-stage Playwright browser automation tool:
+
+```text
+GET /api/v1/jobs/search?keyword=python
+```
+
+`JobScraperTool` opens a browser page, loads a public demo job board HTML page, extracts job cards, filters them by keyword, and returns structured job data:
+
+```json
+[
+  {
+    "title": "Python AI Backend Engineer",
+    "company": "AgentWorks",
+    "location": "Remote",
+    "skills": ["Python", "FastAPI", "OpenAI", "LangGraph"]
+  }
+]
+```
+
+This is intentionally not a real login-based scraper yet. It demonstrates the browser automation architecture safely before adding real job scraping.
+
 ## Engineering Highlights
 
 - Layered architecture with clear route, service, workflow, agent, tool, and database boundaries
@@ -116,12 +152,12 @@ Example response shape:
 - SQLite persistence for resume analysis history
 - Memory context built from recent analysis records
 - Internal SkillGapTool for deterministic learning-plan generation
+- Playwright JobScraperTool for browser automation experiments
 - Observability logging for workflow nodes, routing decisions, match scores, memory usage, and database saves
 - GitHub-friendly commit history and modular project structure
 
 ## Roadmap
 
-- Playwright browser automation
 - Real job scraping
 - Auto application tracking
 - Frontend dashboard
