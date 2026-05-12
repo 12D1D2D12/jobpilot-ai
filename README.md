@@ -1,6 +1,6 @@
 # JobPilot AI
 
-JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workflows. It includes JD analysis, LangGraph resume optimization, conditional routing, memory context, SQLite persistence, and observability logging for debugging agent workflows.
+JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workflows. It includes JD analysis, LangGraph resume optimization, conditional routing, memory context, internal tool calling, SQLite persistence, and observability logging for debugging agent workflows.
 
 ## Tech Stack
 
@@ -8,6 +8,7 @@ JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workf
 - FastAPI with async request handlers
 - OpenAI-compatible SDK integration
 - LangGraph StateGraph for resume workflow orchestration
+- Internal tools for deterministic agent support tasks
 - SQLAlchemy with SQLite persistence
 - Python standard logging for observability
 - Pytest and HTTPX for API tests
@@ -24,6 +25,7 @@ JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workf
 ├── prompts/
 ├── services/
 ├── tests/
+├── tools/
 ├── workflow/
 ├── main.py
 ├── README.md
@@ -77,6 +79,14 @@ Logs include:
 - Whether memory context exists
 
 Logs intentionally do not include API keys or full resume/JD text. Only text lengths and short previews are recorded.
+
+## Tool Calling
+
+The resume workflow includes an internal `SkillGapTool`.
+
+When the match score is below 75, LangGraph routes to the learning-plan branch. That branch identifies missing skills, calls `SkillGapTool.generate_learning_plan()`, and merges the generated plan into the final summary without changing the public API schema.
+
+Supported deterministic skill plans include Redis, Docker, LangGraph, and FastAPI. Unknown skills receive a generic hands-on learning plan.
 
 ## Testing
 

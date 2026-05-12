@@ -75,8 +75,8 @@ class MissingSummaryAgent:
             return '{"jd_required_skills": ["FastAPI", "LangGraph"]}'
         if "match_score" in system_prompt:
             return '{"match_score": "high"}'
-        if "learning_plan" in system_prompt:
-            return '{"learning_plan": ["Learn LangGraph basics", "Build workflow project"]}'
+        if "missing_skills" in system_prompt:
+            return '{"missing_skills": ["LangGraph"]}'
         if "application_recommendation" in system_prompt:
             return '{"application_recommendation": "Apply now."}'
         return (
@@ -103,7 +103,8 @@ async def test_resume_workflow_falls_back_when_summary_missing() -> None:
     assert result["project_rewrite_suggestions"] == []
     assert result["summary"] == (
         f"{ResumeWorkflow.DEFAULT_SUMMARY}\n\n"
-        "Learning plan: Learn LangGraph basics; Build workflow project"
+        "Learning plan: LangGraph: study StateGraph, state design, nodes, edges, "
+        "conditional routing, memory, and checkpointing."
     )
 
 
@@ -119,8 +120,8 @@ class LowScoreRoutingAgent:
             return '{"jd_required_skills": ["Python", "FastAPI", "LangGraph"]}'
         if "match_score" in system_prompt:
             return '{"match_score": 64}'
-        if "learning_plan" in system_prompt:
-            return '{"learning_plan": ["Build FastAPI project", "Learn LangGraph StateGraph"]}'
+        if "missing_skills" in system_prompt:
+            return '{"missing_skills": ["FastAPI", "LangGraph"]}'
         return (
             "{"
             '"strengths": ["Python foundation matches"],'
@@ -144,7 +145,9 @@ async def test_resume_workflow_low_score_routes_to_learning_plan() -> None:
 
     assert result["match_score"] == 64
     assert "Learning plan" in result["summary"]
-    assert any("learning_plan" in call for call in agent.calls)
+    assert "FastAPI: study routes" in result["summary"]
+    assert "LangGraph: study StateGraph" in result["summary"]
+    assert any("missing_skills" in call for call in agent.calls)
     assert not any("application_recommendation" in call for call in agent.calls)
 
 

@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from agents.resume_optimizer_agent import ResumeOptimizerAgent
 from memory.resume_memory import ResumeMemoryManager
 from services.logger import get_logger
+from tools.skill_gap_tool import SkillGapTool
 
 
 logger = get_logger(__name__)
@@ -39,9 +40,11 @@ class ResumeWorkflow:
         self,
         agent: ResumeOptimizerAgent | None = None,
         memory_manager: ResumeMemoryManager | None = None,
+        skill_gap_tool: SkillGapTool | None = None,
     ) -> None:
         self.agent = agent or ResumeOptimizerAgent()
         self.memory_manager = memory_manager or ResumeMemoryManager()
+        self.skill_gap_tool = skill_gap_tool or SkillGapTool()
         self.compiled_graph = self._build_graph()
 
     def _build_graph(self):
@@ -233,9 +236,9 @@ class ResumeWorkflow:
         )
         payload = await self._call_json_node(
             system_prompt=(
-                "Generate a focused learning plan in Chinese for a candidate whose "
-                "resume match score is below 75. Return only JSON with key "
-                "\"learning_plan\" as an array of actionable strings."
+                "Identify missing skills for a candidate whose resume match score "
+                "is below 75. Return only JSON with key \"missing_skills\" as an "
+                "array of concise skill strings."
             ),
             user_prompt=(
                 f"Resume skills: {state['extracted_resume_skills']}\n"
@@ -243,7 +246,18 @@ class ResumeWorkflow:
                 f"Match score: {state['match_score']}"
             ),
         )
-        learning_plan = self._optional_string_list(payload, "learning_plan")
+        missing_skills = self._optional_string_list(payload, "missing_skills")
+        if not missing_skills:
+            missing_skills = self._infer_missing_skills(
+                resume_skills=state["extracted_resume_skills"],
+                jd_required_skills=state["jd_required_skills"],
+            )
+        logger.info(
+            "Workflow tool call tool=SkillGapTool called=%s missing_skill_count=%s",
+            True,
+            len(missing_skills),
+        )
+        learning_plan = self.skill_gap_tool.generate_learning_plan(missing_skills)
         logger.info(
             "Workflow node complete node=generate_learning_plan item_count=%s",
             len(learning_plan),
@@ -383,3 +397,15 @@ class ResumeWorkflow:
             plan = "; ".join(state["learning_plan"])
             return f"{summary}\n\nLearning plan: {plan}"
         return summary
+
+    def _infer_missing_skills(
+        self,
+        resume_skills: list[str],
+        jd_required_skills: list[str],
+    ) -> list[str]:
+        normalized_resume_skills = {skill.strip().lower() for skill in resume_skills}
+        return [
+            skill
+            for skill in jd_required_skills
+            if skill.strip().lower() not in normalized_resume_skills
+        ]
