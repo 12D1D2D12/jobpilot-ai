@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 
-from api.routes import health
+from api.routes import health, job
 from services.config import get_settings
 
 
@@ -18,12 +18,13 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title=settings.app_name,
-        version=settings.app_version,
+        title=settings.APP_NAME,
+        version=settings.APP_VERSION,
         description="AI agent engineering platform for job search automation.",
         lifespan=lifespan,
     )
 
-    app.include_router(health.router, prefix=settings.api_prefix)
+    app.include_router(health.router, prefix=settings.API_PREFIX)
+    app.include_router(job.router, prefix=settings.API_PREFIX)
 
     return app

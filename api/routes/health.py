@@ -19,10 +19,9 @@ class HealthResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     settings = get_settings()
-
     return HealthResponse(
         status="ok",
-        service=settings.app_name,
-        version=settings.app_version,
+        service=settings.APP_NAME,
+        version=settings.APP_VERSION,
         timestamp=datetime.now(UTC),
     )
