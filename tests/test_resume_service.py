@@ -21,10 +21,20 @@ class FakeCompiledGraph:
 class FakeWorkflow:
     compiled_graph = FakeCompiledGraph()
 
-    def create_initial_state(self, resume_text: str, jd_text: str):
+    def __init__(self) -> None:
+        self.memory_manager = FakeMemoryManager()
+
+    def create_initial_state(
+        self,
+        resume_text: str,
+        jd_text: str,
+        user_id: str = "default_user",
+    ):
         return {
+            "user_id": user_id,
             "resume_text": resume_text,
             "jd_text": jd_text,
+            "memory_context": "",
             "extracted_resume_skills": [],
             "jd_required_skills": [],
             "match_score": 0,
@@ -58,10 +68,32 @@ class FakeDb:
         self.committed = True
 
 
+class FakeMemoryManager:
+    def __init__(self) -> None:
+        self.saved = []
+
+    def save_analysis_summary(
+        self,
+        user_id: str,
+        summary: str,
+        match_score: int,
+        missing_skills: list[str],
+    ) -> None:
+        self.saved.append(
+            {
+                "user_id": user_id,
+                "summary": summary,
+                "match_score": match_score,
+                "missing_skills": missing_skills,
+            }
+        )
+
+
 @pytest.mark.asyncio
 async def test_resume_service_uses_compiled_graph() -> None:
     db = FakeDb()
-    service = ResumeService(db=db, workflow=FakeWorkflow())
+    workflow = FakeWorkflow()
+    service = ResumeService(db=db, workflow=workflow)
 
     result = await service.optimize_resume(
         resume_text="Resume with FastAPI experience.",
@@ -73,3 +105,4 @@ async def test_resume_service_uses_compiled_graph() -> None:
     assert db.committed is True
     assert len(db.records) == 1
     assert db.records[0].summary == "Good fit with one missing workflow skill."
+    assert workflow.memory_manager.saved[0]["user_id"] == "default_user"

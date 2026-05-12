@@ -3,12 +3,24 @@ import pytest
 from workflow.resume_workflow import ResumeWorkflow
 
 
+class FakeMemoryManager:
+    def __init__(self) -> None:
+        self.requested_user_ids: list[str] = []
+
+    def get_memory_context(self, user_id: str) -> str:
+        self.requested_user_ids.append(user_id)
+        return "Previous memory: user already added Docker; Redis remains missing."
+
+
 class FakeResumeAgent:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
     async def run_json_task(self, system_prompt: str, user_prompt: str) -> str:
         self.calls.append(system_prompt)
+        if "Generate resume optimization output" in system_prompt:
+            assert "Docker" in user_prompt
+            assert "Redis" in user_prompt
         if "extracted_resume_skills" in system_prompt:
             return '{"extracted_resume_skills": ["FastAPI", "OpenAI"]}'
         if "jd_required_skills" in system_prompt:
@@ -33,7 +45,8 @@ class FakeResumeAgent:
 @pytest.mark.asyncio
 async def test_resume_workflow_runs_all_nodes() -> None:
     agent = FakeResumeAgent()
-    workflow = ResumeWorkflow(agent=agent)
+    memory_manager = FakeMemoryManager()
+    workflow = ResumeWorkflow(agent=agent, memory_manager=memory_manager)
 
     result = await workflow.run(
         resume_text="Built FastAPI services with OpenAI integrations.",
@@ -51,6 +64,7 @@ async def test_resume_workflow_runs_all_nodes() -> None:
     )
     assert any("application_recommendation" in call for call in agent.calls)
     assert not any("learning_plan" in call for call in agent.calls)
+    assert memory_manager.requested_user_ids == ["default_user"]
 
 
 class MissingSummaryAgent:

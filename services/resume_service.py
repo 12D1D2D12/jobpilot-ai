@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database.models import ResumeAnalysisRecord
+from memory.resume_memory import ResumeMemoryManager
 from services.openai_client import OpenAIClientError
 from workflow.resume_workflow import ResumeWorkflow, ResumeWorkflowError
 
@@ -33,22 +34,26 @@ class ResumeService:
         workflow: ResumeWorkflow | None = None,
     ) -> None:
         self.db = db
-        self.workflow = workflow or ResumeWorkflow()
+        self.memory_manager = ResumeMemoryManager(db=db)
+        self.workflow = workflow or ResumeWorkflow(memory_manager=self.memory_manager)
 
     async def optimize_resume(
         self,
         resume_text: str,
         jd_text: str,
+        user_id: str = "default_user",
     ) -> ResumeOptimizeResult:
         result = await self._run_resume_workflow(
             resume_text=resume_text,
             jd_text=jd_text,
+            user_id=user_id,
         )
         self._save_analysis_record(
             resume_text=resume_text,
             jd_text=jd_text,
             result=result,
         )
+        self._save_memory_summary(user_id=user_id, result=result)
         return result
 
     async def get_history(self, limit: int = 20) -> list[ResumeAnalysisHistoryItem]:
@@ -81,12 +86,14 @@ class ResumeService:
         self,
         resume_text: str,
         jd_text: str,
+        user_id: str,
     ) -> ResumeOptimizeResult:
         try:
             final_state = await self.workflow.compiled_graph.ainvoke(
                 self.workflow.create_initial_state(
                     resume_text=resume_text,
                     jd_text=jd_text,
+                    user_id=user_id,
                 )
             )
             payload = self.workflow.to_result(final_state)
@@ -127,3 +134,16 @@ class ResumeService:
         )
         self.db.add(record)
         self.db.commit()
+
+    def _save_memory_summary(
+        self,
+        user_id: str,
+        result: ResumeOptimizeResult,
+    ) -> None:
+        memory_manager = getattr(self.workflow, "memory_manager", self.memory_manager)
+        memory_manager.save_analysis_summary(
+            user_id=user_id,
+            summary=result.summary,
+            match_score=result.match_score,
+            missing_skills=result.missing_skills,
+        )

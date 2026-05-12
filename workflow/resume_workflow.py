@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from agents.resume_optimizer_agent import ResumeOptimizerAgent
+from memory.resume_memory import ResumeMemoryManager
 
 
 class ResumeWorkflowError(RuntimeError):
@@ -11,8 +12,10 @@ class ResumeWorkflowError(RuntimeError):
 
 
 class ResumeWorkflowState(TypedDict):
+    user_id: str
     resume_text: str
     jd_text: str
+    memory_context: str
     extracted_resume_skills: list[str]
     jd_required_skills: list[str]
     match_score: int
@@ -28,13 +31,19 @@ class ResumeWorkflowState(TypedDict):
 class ResumeWorkflow:
     DEFAULT_SUMMARY = "\u6682\u672a\u751f\u6210\u603b\u7ed3\uff0c\u8bf7\u6839\u636e\u7ed3\u6784\u5316\u5efa\u8bae\u7ee7\u7eed\u4f18\u5316\u7b80\u5386\u3002"
 
-    def __init__(self, agent: ResumeOptimizerAgent | None = None) -> None:
+    def __init__(
+        self,
+        agent: ResumeOptimizerAgent | None = None,
+        memory_manager: ResumeMemoryManager | None = None,
+    ) -> None:
         self.agent = agent or ResumeOptimizerAgent()
+        self.memory_manager = memory_manager or ResumeMemoryManager()
         self.compiled_graph = self._build_graph()
 
     def _build_graph(self):
         graph = StateGraph(ResumeWorkflowState)
 
+        graph.add_node("load_memory_context", self.load_memory_context)
         graph.add_node("extract_resume_skills", self.extract_resume_skills)
         graph.add_node("analyze_jd_requirements", self.analyze_jd_requirements)
         graph.add_node("calculate_match_score", self.calculate_match_score)
@@ -42,7 +51,8 @@ class ResumeWorkflow:
         graph.add_node("recommend_application", self.recommend_application)
         graph.add_node("generate_resume_suggestions", self.generate_resume_suggestions)
 
-        graph.add_edge(START, "extract_resume_skills")
+        graph.add_edge(START, "load_memory_context")
+        graph.add_edge("load_memory_context", "extract_resume_skills")
         graph.add_edge("extract_resume_skills", "analyze_jd_requirements")
         graph.add_edge("analyze_jd_requirements", "calculate_match_score")
         graph.add_conditional_edges(
@@ -59,10 +69,17 @@ class ResumeWorkflow:
 
         return graph.compile()
 
-    def create_initial_state(self, resume_text: str, jd_text: str) -> ResumeWorkflowState:
+    def create_initial_state(
+        self,
+        resume_text: str,
+        jd_text: str,
+        user_id: str = "default_user",
+    ) -> ResumeWorkflowState:
         return {
+            "user_id": user_id,
             "resume_text": resume_text,
             "jd_text": jd_text,
+            "memory_context": "",
             "extracted_resume_skills": [],
             "jd_required_skills": [],
             "match_score": 0,
@@ -75,9 +92,18 @@ class ResumeWorkflow:
             "application_recommendation": "",
         }
 
-    async def run(self, resume_text: str, jd_text: str) -> dict[str, Any]:
+    async def run(
+        self,
+        resume_text: str,
+        jd_text: str,
+        user_id: str = "default_user",
+    ) -> dict[str, Any]:
         final_state = await self.compiled_graph.ainvoke(
-            self.create_initial_state(resume_text=resume_text, jd_text=jd_text)
+            self.create_initial_state(
+                resume_text=resume_text,
+                jd_text=jd_text,
+                user_id=user_id,
+            )
         )
         return self.to_result(final_state)
 
@@ -92,6 +118,16 @@ class ResumeWorkflow:
                 [],
             ),
             "summary": state.get("summary", self.DEFAULT_SUMMARY),
+        }
+
+    async def load_memory_context(
+        self,
+        state: ResumeWorkflowState,
+    ) -> dict[str, str]:
+        return {
+            "memory_context": self.memory_manager.get_memory_context(
+                user_id=state["user_id"]
+            )
         }
 
     async def extract_resume_skills(
@@ -218,7 +254,8 @@ class ResumeWorkflow:
                 f"JD required skills: {state['jd_required_skills']}\n"
                 f"Match score: {state['match_score']}\n"
                 f"Learning plan: {state['learning_plan']}\n"
-                f"Application recommendation: {state['application_recommendation']}"
+                f"Application recommendation: {state['application_recommendation']}\n"
+                f"Memory context:\n{state['memory_context']}"
             ),
         )
         summary = self._optional_string_value(
