@@ -83,10 +83,13 @@ class ResumeService:
         jd_text: str,
     ) -> ResumeOptimizeResult:
         try:
-            payload = await self.workflow.run(
-                resume_text=resume_text,
-                jd_text=jd_text,
+            final_state = await self.workflow.compiled_graph.ainvoke(
+                self.workflow.create_initial_state(
+                    resume_text=resume_text,
+                    jd_text=jd_text,
+                )
             )
+            payload = self.workflow.to_result(final_state)
         except OpenAIClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
