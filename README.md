@@ -1,48 +1,36 @@
-# JobPilot AI
+# JobPilot AI - Multi-Agent Job Hunting Automation Platform
 
-JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workflows. It includes JD analysis, LangGraph resume optimization, conditional routing, memory context, internal tool calling, SQLite persistence, and observability logging for debugging agent workflows.
+JobPilot AI is a FastAPI AI backend for job hunting automation. It combines JD analysis, structured resume optimization, LangGraph workflow orchestration, SQLite history, memory context, internal tool calling, and observability logging.
 
-## Tech Stack
+The project is designed as an AI Agent Engineering backend rather than a simple demo: API routes, service layer, workflow orchestration, agents, tools, memory, and database persistence are separated for maintainability.
 
-- Python 3.11+
-- FastAPI with async request handlers
-- OpenAI-compatible SDK integration
-- LangGraph StateGraph for resume workflow orchestration
-- Internal tools for deterministic agent support tasks
-- SQLAlchemy with SQLite persistence
-- Python standard logging for observability
-- Pytest and HTTPX for API tests
+## Features
 
-## Project Structure
+- [x] JD Analyzer Agent
+- [x] Resume Optimizer Agent
+- [x] Structured JSON Output
+- [x] SQLite Persistence
+- [x] LangGraph Workflow
+- [x] Conditional Routing
+- [x] Memory Context
+- [x] SkillGapTool Tool Calling
+- [x] Observability Logging
+
+## Architecture
 
 ```text
-.
-├── agents/
-├── api/
-│   └── routes/
-├── database/
-├── memory/
-├── prompts/
-├── services/
-├── tests/
-├── tools/
-├── workflow/
-├── main.py
-├── README.md
-└── requirements.txt
+API Route
+↓
+Service Layer
+↓
+LangGraph Workflow
+↓
+Agent / Tools
+↓
+Database
 ```
 
-## Quick Start
-
-```bash
-python -m venv venv
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
-The app creates `jobpilot.db` automatically on startup.
-
-## APIs
+## API Endpoints
 
 ```text
 GET  /api/v1/health
@@ -51,11 +39,66 @@ POST /api/v1/resume/optimize
 GET  /api/v1/resume/history
 ```
 
-Resume optimization response:
+## Quick Start
+
+Create a virtual environment:
+
+```bash
+python -m venv venv
+```
+
+Activate it:
+
+```bash
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+
+# macOS / Linux
+source venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Configure environment variables:
+
+```bash
+cp .env.example .env
+```
+
+Set your OpenAI-compatible API key in `.env`.
+
+Start the API:
+
+```bash
+uvicorn main:app --reload
+```
+
+Open Swagger docs:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+## Example Request
+
+`POST /api/v1/resume/optimize`
 
 ```json
 {
-  "match_score": 86,
+  "resume_text": "Experienced Python backend developer with FastAPI API experience and AI application projects.",
+  "jd_text": "We are looking for an AI backend engineer familiar with FastAPI, LangGraph, Redis, Docker, and LLM application development."
+}
+```
+
+Example response shape:
+
+```json
+{
+  "match_score": 78,
   "strengths": ["..."],
   "missing_skills": ["..."],
   "resume_suggestions": ["..."],
@@ -64,34 +107,23 @@ Resume optimization response:
 }
 ```
 
-## Observability
+## Engineering Highlights
 
-JobPilot AI uses Python standard `logging` through `services/logger.py`.
+- Layered architecture with clear route, service, workflow, agent, tool, and database boundaries
+- Pydantic validation for request and structured response schemas
+- LLM fallback handling for unstable or incomplete model outputs
+- Mock-based testing for agents, workflow, tools, and service boundaries
+- SQLite persistence for resume analysis history
+- Memory context built from recent analysis records
+- Internal SkillGapTool for deterministic learning-plan generation
+- Observability logging for workflow nodes, routing decisions, match scores, memory usage, and database saves
+- GitHub-friendly commit history and modular project structure
 
-Logs include:
+## Roadmap
 
-- Resume optimization start and input text lengths
-- Workflow completion and match score
-- SQLite save success
-- Resume history query count
-- LangGraph node start and completion
-- Conditional routing decision
-- Whether memory context exists
-
-Logs intentionally do not include API keys or full resume/JD text. Only text lengths and short previews are recorded.
-
-## Tool Calling
-
-The resume workflow includes an internal `SkillGapTool`.
-
-When the match score is below 75, LangGraph routes to the learning-plan branch. That branch identifies missing skills, calls `SkillGapTool.generate_learning_plan()`, and merges the generated plan into the final summary without changing the public API schema.
-
-Supported deterministic skill plans include Redis, Docker, LangGraph, and FastAPI. Unknown skills receive a generic hands-on learning plan.
-
-## Testing
-
-```bash
-pytest
-```
-
-Resume workflow tests use mocks and do not call the real model.
+- Playwright browser automation
+- Real job scraping
+- Auto application tracking
+- Frontend dashboard
+- PostgreSQL migration
+- Deployment with Docker
