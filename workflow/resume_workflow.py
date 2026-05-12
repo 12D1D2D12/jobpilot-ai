@@ -5,6 +5,10 @@ from langgraph.graph import END, START, StateGraph
 
 from agents.resume_optimizer_agent import ResumeOptimizerAgent
 from memory.resume_memory import ResumeMemoryManager
+from services.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class ResumeWorkflowError(RuntimeError):
@@ -124,16 +128,27 @@ class ResumeWorkflow:
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, str]:
+        logger.info("Workflow node start node=load_memory_context user_id=%s", state["user_id"])
+        memory_context = self.memory_manager.get_memory_context(user_id=state["user_id"])
+        logger.info(
+            "Workflow memory loaded user_id=%s has_memory=%s memory_len=%s",
+            state["user_id"],
+            bool(memory_context),
+            len(memory_context),
+        )
         return {
-            "memory_context": self.memory_manager.get_memory_context(
-                user_id=state["user_id"]
-            )
+            "memory_context": memory_context
         }
 
     async def extract_resume_skills(
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, list[str]]:
+        logger.info(
+            "Workflow node start node=extract_resume_skills resume_len=%s resume_preview=%r",
+            len(state["resume_text"]),
+            state["resume_text"][:50],
+        )
         payload = await self._call_json_node(
             system_prompt=(
                 "Extract skills from the resume. Return only JSON with key "
@@ -141,17 +156,24 @@ class ResumeWorkflow:
             ),
             user_prompt=f"Resume:\n{state['resume_text']}",
         )
+        skills = self._optional_string_list(
+            payload,
+            "extracted_resume_skills",
+        )
+        logger.info("Workflow node complete node=extract_resume_skills skill_count=%s", len(skills))
         return {
-            "extracted_resume_skills": self._optional_string_list(
-                payload,
-                "extracted_resume_skills",
-            )
+            "extracted_resume_skills": skills
         }
 
     async def analyze_jd_requirements(
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, list[str]]:
+        logger.info(
+            "Workflow node start node=analyze_jd_requirements jd_len=%s jd_preview=%r",
+            len(state["jd_text"]),
+            state["jd_text"][:50],
+        )
         payload = await self._call_json_node(
             system_prompt=(
                 "Extract required skills from the job description. Return only JSON "
@@ -159,17 +181,18 @@ class ResumeWorkflow:
             ),
             user_prompt=f"Job Description:\n{state['jd_text']}",
         )
-        return {
-            "jd_required_skills": self._optional_string_list(
-                payload,
-                "jd_required_skills",
-            )
-        }
+        required_skills = self._optional_string_list(payload, "jd_required_skills")
+        logger.info(
+            "Workflow node complete node=analyze_jd_requirements required_skill_count=%s",
+            len(required_skills),
+        )
+        return {"jd_required_skills": required_skills}
 
     async def calculate_match_score(
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, int]:
+        logger.info("Workflow node start node=calculate_match_score")
         payload = await self._call_json_node(
             system_prompt=(
                 "Calculate a resume-to-JD match score. Return only JSON with key "
@@ -181,23 +204,33 @@ class ResumeWorkflow:
             ),
         )
         score = payload.get("match_score")
+        normalized_score = score if isinstance(score, int) and 0 <= score <= 100 else 0
+        logger.info("Workflow match_score calculated value=%s", normalized_score)
         return {
-            "match_score": score
-            if isinstance(score, int) and 0 <= score <= 100
-            else 0
+            "match_score": normalized_score
         }
 
     def route_after_match_score(self, state: ResumeWorkflowState) -> str:
-        return (
+        route = (
             "recommend_application"
             if state.get("match_score", 0) >= 75
             else "generate_learning_plan"
         )
+        logger.info(
+            "Workflow conditional route match_score=%s route=%s",
+            state.get("match_score", 0),
+            route,
+        )
+        return route
 
     async def generate_learning_plan(
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, list[str]]:
+        logger.info(
+            "Workflow node start node=generate_learning_plan match_score=%s",
+            state["match_score"],
+        )
         payload = await self._call_json_node(
             system_prompt=(
                 "Generate a focused learning plan in Chinese for a candidate whose "
@@ -210,12 +243,21 @@ class ResumeWorkflow:
                 f"Match score: {state['match_score']}"
             ),
         )
-        return {"learning_plan": self._optional_string_list(payload, "learning_plan")}
+        learning_plan = self._optional_string_list(payload, "learning_plan")
+        logger.info(
+            "Workflow node complete node=generate_learning_plan item_count=%s",
+            len(learning_plan),
+        )
+        return {"learning_plan": learning_plan}
 
     async def recommend_application(
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, str]:
+        logger.info(
+            "Workflow node start node=recommend_application match_score=%s",
+            state["match_score"],
+        )
         payload = await self._call_json_node(
             system_prompt=(
                 "Generate an application recommendation in Chinese for a candidate "
@@ -228,18 +270,26 @@ class ResumeWorkflow:
                 f"Match score: {state['match_score']}"
             ),
         )
-        return {
-            "application_recommendation": self._optional_string_value(
-                payload,
-                "application_recommendation",
-                "",
-            )
-        }
+        recommendation = self._optional_string_value(
+            payload,
+            "application_recommendation",
+            "",
+        )
+        logger.info(
+            "Workflow node complete node=recommend_application has_recommendation=%s",
+            bool(recommendation),
+        )
+        return {"application_recommendation": recommendation}
 
     async def generate_resume_suggestions(
         self,
         state: ResumeWorkflowState,
     ) -> dict[str, Any]:
+        logger.info(
+            "Workflow node start node=generate_resume_suggestions match_score=%s has_memory=%s",
+            state["match_score"],
+            bool(state["memory_context"]),
+        )
         payload = await self._call_json_node(
             system_prompt=(
                 "Generate resume optimization output in Chinese. Return only JSON "
@@ -264,6 +314,10 @@ class ResumeWorkflow:
             self.DEFAULT_SUMMARY,
         )
         summary = self._merge_branch_context_into_summary(summary, state)
+        logger.info(
+            "Workflow node complete node=generate_resume_suggestions summary_len=%s",
+            len(summary),
+        )
         return {
             "strengths": self._optional_string_list(payload, "strengths"),
             "missing_skills": self._optional_string_list(payload, "missing_skills"),

@@ -1,39 +1,30 @@
 # JobPilot AI
 
-JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workflows. It includes JD analysis, resume optimization, OpenAI-compatible model integration, and SQLite persistence for resume analysis records.
+JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workflows. It includes JD analysis, LangGraph resume optimization, conditional routing, memory context, SQLite persistence, and observability logging for debugging agent workflows.
 
 ## Tech Stack
 
 - Python 3.11+
 - FastAPI with async request handlers
-- Pydantic Settings for environment configuration
 - OpenAI-compatible SDK integration
+- LangGraph StateGraph for resume workflow orchestration
 - SQLAlchemy with SQLite persistence
+- Python standard logging for observability
 - Pytest and HTTPX for API tests
-- LangGraph and Playwright are reserved for later agent workflow and browser automation features
 
 ## Project Structure
 
 ```text
 .
-├── api/
-│   ├── app.py
-│   └── routes/
-│       ├── health.py
-│       ├── job.py
-│       └── resume.py
 ├── agents/
-│   ├── job_search_agent.py
-│   └── resume_optimizer_agent.py
+├── api/
+│   └── routes/
 ├── database/
-│   ├── init_db.py
-│   ├── models.py
-│   └── session.py
+├── memory/
 ├── prompts/
 ├── services/
-│   ├── config.py
-│   └── openai_client.py
 ├── tests/
+├── workflow/
 ├── main.py
 ├── README.md
 └── requirements.txt
@@ -41,27 +32,9 @@ JobPilot AI is a FastAPI-based AI Agent Engineering project for job search workf
 
 ## Quick Start
 
-Create and activate a virtual environment:
-
 ```bash
 python -m venv venv
-```
-
-On Windows PowerShell:
-
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
-```
-
-Run the API:
-
-```bash
 uvicorn main:app --reload
 ```
 
@@ -69,34 +42,14 @@ The app creates `jobpilot.db` automatically on startup.
 
 ## APIs
 
-Health check:
-
 ```text
-GET http://127.0.0.1:8000/api/v1/health
+GET  /api/v1/health
+POST /api/v1/job/analyze
+POST /api/v1/resume/optimize
+GET  /api/v1/resume/history
 ```
 
-Analyze a job description:
-
-```text
-POST http://127.0.0.1:8000/api/v1/job/analyze
-```
-
-Optimize a resume for a target JD:
-
-```text
-POST http://127.0.0.1:8000/api/v1/resume/optimize
-```
-
-Request body:
-
-```json
-{
-  "resume_text": "Candidate resume text...",
-  "jd_text": "Target job description text..."
-}
-```
-
-Structured response:
+Resume optimization response:
 
 ```json
 {
@@ -109,24 +62,26 @@ Structured response:
 }
 ```
 
-Get recent resume analysis history:
+## Observability
 
-```text
-GET http://127.0.0.1:8000/api/v1/resume/history
-```
+JobPilot AI uses Python standard `logging` through `services/logger.py`.
 
-This returns the latest 20 saved resume analysis records from SQLite.
+Logs include:
+
+- Resume optimization start and input text lengths
+- Workflow completion and match score
+- SQLite save success
+- Resume history query count
+- LangGraph node start and completion
+- Conditional routing decision
+- Whether memory context exists
+
+Logs intentionally do not include API keys or full resume/JD text. Only text lengths and short previews are recorded.
 
 ## Testing
-
-Run all tests:
 
 ```bash
 pytest
 ```
 
-Run resume persistence tests:
-
-```bash
-pytest tests/test_resume_optimize.py
-```
+Resume workflow tests use mocks and do not call the real model.

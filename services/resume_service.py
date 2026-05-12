@@ -7,8 +7,12 @@ from sqlalchemy.orm import Session
 
 from database.models import ResumeAnalysisRecord
 from memory.resume_memory import ResumeMemoryManager
+from services.logger import get_logger
 from services.openai_client import OpenAIClientError
 from workflow.resume_workflow import ResumeWorkflow, ResumeWorkflowError
+
+
+logger = get_logger(__name__)
 
 
 class ResumeOptimizeResult(BaseModel):
@@ -43,6 +47,15 @@ class ResumeService:
         jd_text: str,
         user_id: str = "default_user",
     ) -> ResumeOptimizeResult:
+        logger.info(
+            "Starting resume optimization user_id=%s resume_len=%s jd_len=%s "
+            "resume_preview=%r jd_preview=%r",
+            user_id,
+            len(resume_text),
+            len(jd_text),
+            resume_text[:50],
+            jd_text[:50],
+        )
         result = await self._run_resume_workflow(
             resume_text=resume_text,
             jd_text=jd_text,
@@ -66,7 +79,7 @@ class ResumeService:
             .limit(limit)
         ).all()
 
-        return [
+        history_items = [
             ResumeAnalysisHistoryItem(
                 id=record.id,
                 resume_text=record.resume_text,
@@ -81,6 +94,8 @@ class ResumeService:
             )
             for record in records
         ]
+        logger.info("Resume history query completed limit=%s count=%s", limit, len(history_items))
+        return history_items
 
     async def _run_resume_workflow(
         self,
@@ -97,6 +112,11 @@ class ResumeService:
                 )
             )
             payload = self.workflow.to_result(final_state)
+            logger.info(
+                "Resume workflow completed user_id=%s match_score=%s",
+                user_id,
+                payload.get("match_score"),
+            )
         except OpenAIClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -134,6 +154,11 @@ class ResumeService:
         )
         self.db.add(record)
         self.db.commit()
+        logger.info(
+            "Resume analysis record saved match_score=%s summary_len=%s",
+            result.match_score,
+            len(result.summary),
+        )
 
     def _save_memory_summary(
         self,
