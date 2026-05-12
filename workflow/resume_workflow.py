@@ -21,6 +21,8 @@ class ResumeWorkflowState(TypedDict):
     resume_suggestions: list[str]
     project_rewrite_suggestions: list[str]
     summary: str
+    learning_plan: list[str]
+    application_recommendation: str
 
 
 class ResumeWorkflow:
@@ -36,12 +38,23 @@ class ResumeWorkflow:
         graph.add_node("extract_resume_skills", self.extract_resume_skills)
         graph.add_node("analyze_jd_requirements", self.analyze_jd_requirements)
         graph.add_node("calculate_match_score", self.calculate_match_score)
+        graph.add_node("generate_learning_plan", self.generate_learning_plan)
+        graph.add_node("recommend_application", self.recommend_application)
         graph.add_node("generate_resume_suggestions", self.generate_resume_suggestions)
 
         graph.add_edge(START, "extract_resume_skills")
         graph.add_edge("extract_resume_skills", "analyze_jd_requirements")
         graph.add_edge("analyze_jd_requirements", "calculate_match_score")
-        graph.add_edge("calculate_match_score", "generate_resume_suggestions")
+        graph.add_conditional_edges(
+            "calculate_match_score",
+            self.route_after_match_score,
+            {
+                "generate_learning_plan": "generate_learning_plan",
+                "recommend_application": "recommend_application",
+            },
+        )
+        graph.add_edge("generate_learning_plan", "generate_resume_suggestions")
+        graph.add_edge("recommend_application", "generate_resume_suggestions")
         graph.add_edge("generate_resume_suggestions", END)
 
         return graph.compile()
@@ -58,6 +71,8 @@ class ResumeWorkflow:
             "resume_suggestions": [],
             "project_rewrite_suggestions": [],
             "summary": self.DEFAULT_SUMMARY,
+            "learning_plan": [],
+            "application_recommendation": "",
         }
 
     async def run(self, resume_text: str, jd_text: str) -> dict[str, Any]:
@@ -136,6 +151,55 @@ class ResumeWorkflow:
             else 0
         }
 
+    def route_after_match_score(self, state: ResumeWorkflowState) -> str:
+        return (
+            "recommend_application"
+            if state.get("match_score", 0) >= 75
+            else "generate_learning_plan"
+        )
+
+    async def generate_learning_plan(
+        self,
+        state: ResumeWorkflowState,
+    ) -> dict[str, list[str]]:
+        payload = await self._call_json_node(
+            system_prompt=(
+                "Generate a focused learning plan in Chinese for a candidate whose "
+                "resume match score is below 75. Return only JSON with key "
+                "\"learning_plan\" as an array of actionable strings."
+            ),
+            user_prompt=(
+                f"Resume skills: {state['extracted_resume_skills']}\n"
+                f"JD required skills: {state['jd_required_skills']}\n"
+                f"Match score: {state['match_score']}"
+            ),
+        )
+        return {"learning_plan": self._optional_string_list(payload, "learning_plan")}
+
+    async def recommend_application(
+        self,
+        state: ResumeWorkflowState,
+    ) -> dict[str, str]:
+        payload = await self._call_json_node(
+            system_prompt=(
+                "Generate an application recommendation in Chinese for a candidate "
+                "whose resume match score is at least 75. Return only JSON with key "
+                "\"application_recommendation\" as a string."
+            ),
+            user_prompt=(
+                f"Resume skills: {state['extracted_resume_skills']}\n"
+                f"JD required skills: {state['jd_required_skills']}\n"
+                f"Match score: {state['match_score']}"
+            ),
+        )
+        return {
+            "application_recommendation": self._optional_string_value(
+                payload,
+                "application_recommendation",
+                "",
+            )
+        }
+
     async def generate_resume_suggestions(
         self,
         state: ResumeWorkflowState,
@@ -152,9 +216,17 @@ class ResumeWorkflow:
                 f"Job Description:\n{state['jd_text']}\n\n"
                 f"Resume skills: {state['extracted_resume_skills']}\n"
                 f"JD required skills: {state['jd_required_skills']}\n"
-                f"Match score: {state['match_score']}"
+                f"Match score: {state['match_score']}\n"
+                f"Learning plan: {state['learning_plan']}\n"
+                f"Application recommendation: {state['application_recommendation']}"
             ),
         )
+        summary = self._optional_string_value(
+            payload,
+            "summary",
+            self.DEFAULT_SUMMARY,
+        )
+        summary = self._merge_branch_context_into_summary(summary, state)
         return {
             "strengths": self._optional_string_list(payload, "strengths"),
             "missing_skills": self._optional_string_list(payload, "missing_skills"),
@@ -166,11 +238,7 @@ class ResumeWorkflow:
                 payload,
                 "project_rewrite_suggestions",
             ),
-            "summary": self._optional_string_value(
-                payload,
-                "summary",
-                self.DEFAULT_SUMMARY,
-            ),
+            "summary": summary,
         }
 
     async def _call_json_node(
@@ -212,3 +280,15 @@ class ResumeWorkflow:
     ) -> str:
         value = payload.get(key)
         return value if isinstance(value, str) and value.strip() else default
+
+    def _merge_branch_context_into_summary(
+        self,
+        summary: str,
+        state: ResumeWorkflowState,
+    ) -> str:
+        if state.get("application_recommendation"):
+            return f"{summary}\n\nApplication recommendation: {state['application_recommendation']}"
+        if state.get("learning_plan"):
+            plan = "; ".join(state["learning_plan"])
+            return f"{summary}\n\nLearning plan: {plan}"
+        return summary
