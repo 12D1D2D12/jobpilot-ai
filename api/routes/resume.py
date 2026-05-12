@@ -1,5 +1,8 @@
+import json
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from agents.resume_optimizer_agent import ResumeOptimizerAgent
 from services.openai_client import OpenAIClientError
@@ -14,7 +17,30 @@ class ResumeOptimizeRequest(BaseModel):
 
 
 class ResumeOptimizeResponse(BaseModel):
-    result: str
+    match_score: int = Field(..., ge=0, le=100)
+    strengths: list[str]
+    missing_skills: list[str]
+    resume_suggestions: list[str]
+    project_rewrite_suggestions: list[str]
+    summary: str
+
+
+def parse_resume_optimizer_result(raw_result: str) -> ResumeOptimizeResponse:
+    try:
+        payload: Any = json.loads(raw_result)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Resume optimizer returned invalid JSON.",
+        ) from exc
+
+    try:
+        return ResumeOptimizeResponse.model_validate(payload)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Resume optimizer JSON does not match the expected schema.",
+        ) from exc
 
 
 @router.post("/optimize", response_model=ResumeOptimizeResponse)
@@ -22,7 +48,7 @@ async def optimize_resume(request: ResumeOptimizeRequest) -> ResumeOptimizeRespo
     agent = ResumeOptimizerAgent()
 
     try:
-        result = await agent.optimize_resume(
+        raw_result = await agent.optimize_resume(
             resume_text=request.resume_text,
             jd_text=request.jd_text,
         )
@@ -32,4 +58,4 @@ async def optimize_resume(request: ResumeOptimizeRequest) -> ResumeOptimizeRespo
             detail=str(exc),
         ) from exc
 
-    return ResumeOptimizeResponse(result=result)
+    return parse_resume_optimizer_result(raw_result)
